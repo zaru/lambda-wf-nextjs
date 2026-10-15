@@ -442,6 +442,8 @@ Network Connector は、参照している revision が残っていると安全�
 
 ## 12. 選ばなかった構成
 
+ネットワーク構成の選択肢（VPC を使うか、内部用 API をどう作るか）は [network-options.md](./network-options.md) に図で整理した。
+
 | 案 | 選ばなかった理由 |
 | --- | --- |
 | ElastiCache Serverless の **パブリックエンドポイント**（Valkey 9 以上、IAM 認証が必須） | VPC と Network Connector が不要になり、構成はかなり簡単になる。ただし、IAM 認証トークン（有効期限 15 分）の生成と再接続を実装する必要があり、データストアがインターネットに露出する。今回は「Web Function から VPC 内リソースへ接続する」ことを検証したいので、VPC 構成を採る |
