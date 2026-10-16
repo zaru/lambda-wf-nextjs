@@ -45,6 +45,9 @@ Next.js（App Router）で作る TODO アプリを題材に、Lambda Web Functio
 | 14 | VPC Flow Logs | 有効、保持 7 日 |
 | 15 | 計測対象 | コールドスタート、レイテンシ、負荷試験 |
 | 16 | AWS アカウント | 既存プロジェクトがあるアカウントに相乗りする。既存の Terraform とは**別の state で、独立して**管理する（10 章） |
+| 17 | GitHub リポジトリ | `zaru/lambda-wf-nextjs` |
+| 18 | ネットワークの分離 | 既存 VPC とは**完全に分離**する。ピアリング、Transit Gateway、共有の VPC エンドポイントなど、既存 VPC とつながる経路は一切作らない |
+| 19 | Terraform の state | **新しい専用の S3 バケット**を作る（既存プロジェクトのバケットは使わない） |
 
 ## 3. 全体アーキテクチャ
 
@@ -317,8 +320,23 @@ Web Function 本体（関数・revision・エンドポイント・リソース�
 ### 7.1 方針
 
 - Terraform は利用者が手元で実行する
-- state は S3 バックエンド（`use_lockfile = true`）に置く。既存プロジェクトとは**別のキー（または別のバケット）**にし、バケット名は `-backend-config` で渡す
+- state は、本プロジェクト専用の新しい S3 バケットに置く（`use_lockfile = true` で S3 のネイティブなロックを使い、DynamoDB は使わない）。バケット名は `-backend-config` で渡す
 - 既存プロジェクトのリソースには触れない（10 章）
+
+### 7.1.1 state バケットのブートストラップ
+
+state を置くバケット自体は、それを使う Terraform の中では作れない。そのため、バケットだけを作る小さな Terraform（`infra/bootstrap/`）を分けて用意する。
+
+| 項目 | 内容 |
+| --- | --- |
+| 作るもの | `aws_s3_bucket`（`wf-proto-tfstate-<アカウント ID>`）、バージョニング、SSE-S3、パブリックアクセスブロック、`BucketOwnerEnforced`、TLS 以外のアクセスを拒否するバケットポリシー |
+| bootstrap 自身の state | ローカル（`infra/bootstrap/terraform.tfstate`）。中身はバケット 1 つだけで、失っても `terraform import` で復元できる。`.gitignore` に入れてコミットしない |
+| 削除の保護 | `lifecycle { prevent_destroy = true }` を付ける |
+
+選ばなかった案:
+
+- bootstrap の state を、作ったバケットへ移す（`terraform init -migrate-state`）: 手順が増えるわりに、守る対象がバケット 1 つだけなので効果が薄い
+- AWS CLI でバケットを手作業で作る: 設定（暗号化、パブリックアクセスブロックなど）がコードに残らない
 - すべてのリソース名に接頭辞 `wf-proto` を付け、`default_tags` で `Project = wf-proto` を付ける
 
 ### 7.2 2 段階の apply
@@ -347,6 +365,11 @@ sequenceDiagram
 ### 7.3 ディレクトリ構成
 
 ```
+infra/bootstrap/         # state バケットだけを作る（7.1.1 節）
+├── main.tf
+├── outputs.tf
+└── versions.tf
+
 infra/terraform/
 ├── versions.tf          # terraform >= 1.10, hashicorp/aws >= 6.61
 ├── providers.tf         # ap-northeast-1 と、ACM 用の us-east-1（alias）
@@ -385,7 +408,7 @@ infra/terraform/
 | cloudfront.tf | `aws_cloudfront_origin_access_control` | `origin_type = "lambda"`、`signing_behavior = "always-amz-auth"`、`signing_protocol = "sigv4"` |
 | | `aws_cloudfront_distribution` | 7.5 節のとおり |
 | | `aws_route53_record`（A / AAAA エイリアス） | `wf.dev.id.basicinc.jp` → ディストリビューション |
-| github_oidc.tf | デプロイ用ロール | OIDC プロバイダは `data` で既存を参照する（ない場合だけ作る）。信頼条件は `repo:<owner>/<repo>:ref:refs/heads/main` |
+| github_oidc.tf | デプロイ用ロール | OIDC プロバイダは `data "aws_iam_openid_connect_provider"` で既存を参照する（既存プロジェクトの Terraform が管理しているので変更しない）。信頼条件は `aud = sts.amazonaws.com` かつ `sub = repo:zaru/lambda-wf-nextjs:ref:refs/heads/main` |
 
 ### 7.5 CloudFront の設定
 
@@ -413,13 +436,12 @@ infra/terraform/
 | --- | --- | --- |
 | `region` | `ap-northeast-1` | |
 | `project` | `wf-proto` | リソース名の接頭辞 |
-| `vpc_cidr` | `10.200.0.0/16` | 既存の VPC と重ならない値にする |
+| `vpc_cidr` | `10.200.0.0/16` | 既存 VPC とはつながらないので重なっても動くが、混乱を避けるため別の値にしておく |
 | `domain_name` | `wf.dev.id.basicinc.jp` | |
 | `hosted_zone_name` | `id.basicinc.jp` | |
 | `web_function_name` | `wf-proto-todo` | |
 | `web_function_endpoint_domain` | `""` | 2 回目の apply で設定する（7.2 節） |
-| `github_repository` | （必須） | `owner/repo` 形式。リポジトリ名が決まったら設定する |
-| `create_github_oidc_provider` | `false` | アカウントに OIDC プロバイダがない場合だけ `true` |
+| `github_repository` | `zaru/lambda-wf-nextjs` | デプロイ用ロールの信頼条件に使う |
 
 ### 7.7 出力（GitHub Actions の Variables に登録する）
 
@@ -536,12 +558,12 @@ Web Function を操作する IAM アクションの名前は、実装時にサ�
 
 | 対象 | 方針 |
 | --- | --- |
-| Terraform の state | 既存とは別のキー（または別のバケット）にする。既存の state を参照しない |
-| VPC | 専用の VPC を新しく作る。既存の VPC には相乗りしない。CIDR は既存の VPC と重ならない値にする（将来ピアリングする可能性に備えて） |
+| Terraform の state | 専用の S3 バケットを新しく作る（7.1.1 節）。既存の state を参照しない |
+| VPC | 専用の VPC を新しく作り、既存 VPC とは完全に分離する。ピアリング、Transit Gateway、VPC エンドポイントの共有、セキュリティグループの相互参照はしない |
 | リソース名 | すべてに `wf-proto` の接頭辞を付ける。IAM ロール、ロググループ、S3 バケットなどの名前の衝突を防ぐ |
 | タグ | `Project = wf-proto`。費用の切り分けに使う |
 | Route 53 | 既存の `id.basicinc.jp` ゾーンを `data` で参照し、**レコードだけ**を追加する（`wf.dev.id.basicinc.jp` の A / AAAA、ACM の検証用 CNAME）。既存の Terraform がこの名前のレコードを管理していないことを確認する |
-| GitHub OIDC プロバイダ | アカウントに 1 つしか作れない。既存のものを `data` で参照し、作らない |
+| GitHub OIDC プロバイダ | アカウントに 1 つしか作れない。既存のもの（別の Org / リポジトリ用）を `data` で参照し、作らない。プロバイダは特定のリポジトリに紐づかず、どのリポジトリに許可するかは各ロールの信頼ポリシーで決まるので、既存の設定を変えずに共用できる |
 | サービスクォータ | VPC 数（既定 5 / リージョン）、EIP 数（既定 5）を消費する。apply の前に残りを確認する |
 | Lambda の同時実行 | Web Functions のクォータ（秒間リクエスト数、Arm vCPU 数）は、Event Functions の同時実行数とは別枠。負荷試験で既存プロジェクトの Lambda の枠を消費することはない |
 | 撤去 | `terraform destroy` で消えるのは本プロジェクトのリソースだけ。Route 53 のゾーン自体は消さない |
@@ -550,9 +572,9 @@ Web Function を操作する IAM アクションの名前は、実装時にサ�
 
 ### 11.1 初回構築
 
-1. GitHub リポジトリを作り、コードを push する
-2. `terraform.tfvars` を作る（`github_repository` など）
-3. `terraform init -backend-config=...` → `terraform apply`（1 回目）
+1. コードを `zaru/lambda-wf-nextjs` に push する
+2. `infra/bootstrap` で `terraform init` → `terraform apply`（state バケットを作る）
+3. `infra/terraform` で `terraform init -backend-config=bucket=<state バケット>` → `terraform apply`（1 回目）
 4. 出力を GitHub の Variables に登録し、deploy.yml を実行する → Web Function が作られる
 5. エンドポイントのホスト名を `web_function_endpoint_domain` に設定して `terraform apply`（2 回目）
 6. `DISTRIBUTION_ARN` と `APP_URL` を Variables に登録し、deploy.yml を再実行する → リソースポリシーが設定される
@@ -561,7 +583,8 @@ Web Function を操作する IAM アクションの名前は、実装時にサ�
 ### 11.2 撤去
 
 1. `scripts/destroy-web-function.sh`（Web Function を削除する。Connector を参照している revision を先に消すため）
-2. `terraform destroy`
+2. `infra/terraform` で `terraform destroy`
+3. state バケットも消す場合は、`prevent_destroy` を外してから `infra/bootstrap` で `terraform destroy`（バケットを空にする必要がある）
 
 ## 12. 費用の目安（東京リージョン、月額の概算）
 
@@ -593,14 +616,14 @@ Web Function を操作する IAM アクションの名前は、実装時にサ�
 
 ## 14. 未決定事項
 
-| # | 内容 | 期限 |
+| # | 内容 | 状態 |
 | --- | --- | --- |
-| Q1 | GitHub リポジトリ名 | 1 回目の apply まで |
-| Q2 | `id.basicinc.jp` のホストゾーンが、今回デプロイする AWS アカウントにあるか（別アカウントの場合は、レコードの作成方法を変える） | 1 回目の apply まで |
-| Q3 | アカウントに GitHub の OIDC プロバイダがすでにあるか | 1 回目の apply まで |
-| Q4 | 既存 VPC の CIDR（`10.200.0.0/16` と重ならないか） | 1 回目の apply まで |
-| Q5 | Terraform の state を置く S3 バケット | 1 回目の apply まで |
-| Q6 | 負荷試験の合格基準 | 初回の定常シナリオの後 |
+| Q1 | GitHub リポジトリ名 | 解決: `zaru/lambda-wf-nextjs` |
+| Q2 | `id.basicinc.jp` のホストゾーンが、今回デプロイする AWS アカウントにあるか | 解決: ある |
+| Q3 | アカウントに GitHub の OIDC プロバイダがすでにあるか | 解決: ある（別の Org / リポジトリ用）。`data` で参照して共用する |
+| Q4 | 既存 VPC の CIDR | 解決: 既存 VPC とは完全に分離するので、考慮しなくてよい |
+| Q5 | Terraform の state を置く S3 バケット | 解決: 専用のバケットを新しく作る（7.1.1 節） |
+| Q6 | 負荷試験の合格基準 | 未決定。初回の定常シナリオの後に決める |
 
 ## 15. 実装の進め方
 
