@@ -33,6 +33,8 @@ globalThis.__wfRequestContext = requestContext;
 
 const environmentId = Math.random().toString(36).slice(2, 10);
 let requestCount = 0;
+// 待ち受けを始めた時刻。最初のリクエストが届くまでの時間を測るのに使う
+let readyAt;
 
 function log(fields) {
   process.stdout.write(
@@ -60,6 +62,11 @@ http.Server.prototype.emit = function emit(event, req, res, ...rest) {
     coldStart: requestCount === 1,
     timings: {},
   };
+  // 最初のリクエストについて、待ち受けを始めてから届くまでの時間を記録する。
+  // 数百 ms 程度なら、このリクエストが実行環境の起動を待っていた（利用者がコールドスタートを体験した）。
+  // 数秒以上なら、需要に先回りして用意された実行環境に、あとからリクエストが来た（起動は待っていない）
+  const sinceReadyMs =
+    ctx.coldStart && readyAt !== undefined ? Number((ctx.start - readyAt).toFixed(1)) : undefined;
 
   // ヘッダが送られる直前に Server-Timing を付ける。
   // ストリーミングの場合は、その時点までの所要時間になる
@@ -82,6 +89,7 @@ http.Server.prototype.emit = function emit(event, req, res, ...rest) {
         Object.entries(ctx.timings).map(([name, dur]) => [name, Number(dur.toFixed(1))]),
       ),
       coldStart: ctx.coldStart,
+      sinceReadyMs,
       requestCount,
     });
   });
@@ -92,6 +100,7 @@ http.Server.prototype.emit = function emit(event, req, res, ...rest) {
 const originalListen = http.Server.prototype.listen;
 http.Server.prototype.listen = function listen(...args) {
   this.once("listening", () => {
+    readyAt = performance.now();
     // プロセスの起動から待ち受け開始までの時間（コールドスタートのうち、アプリの初期化分）
     log({ type: "ready", uptimeMs: Number((process.uptime() * 1000).toFixed(1)) });
   });
