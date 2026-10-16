@@ -1,0 +1,58 @@
+name: canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "pin: 現在の revision に固定 / shift: 割合を流す / promote: 100% にして自動デプロイに戻す / rollback: 主系に戻す / status: 表示"
+        type: choice
+        options: [status, pin, shift, promote, rollback]
+        default: status
+      revision_id:
+        description: "shift / promote の対象 revision ID"
+        type: string
+        required: false
+      percent:
+        description: "shift のときに新しい revision へ流す割合（1-99）"
+        type: string
+        default: "10"
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    runs-on: ubuntu-24.04
+    env:
+      WEB_FUNCTION_NAME: ${{ vars.WEB_FUNCTION_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update AWS CLI
+        run: |
+          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+          unzip -q /tmp/awscliv2.zip -d /tmp
+          sudo /tmp/aws/install --update
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Run canary command
+        env:
+          COMMAND: ${{ inputs.command }}
+          REVISION_ID: ${{ inputs.revision_id }}
+          PERCENT: ${{ inputs.percent }}
+        run: |
+          case "$COMMAND" in
+            shift) scripts/canary.sh shift "$REVISION_ID" "$PERCENT" ;;
+            promote) scripts/canary.sh promote "$REVISION_ID" ;;
+            *) scripts/canary.sh "$COMMAND" ;;
+          esac
+          scripts/canary.sh status

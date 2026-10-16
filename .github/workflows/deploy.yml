@@ -1,0 +1,59 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+# デプロイは直列に実行する（途中のデプロイは取り消さない）
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ARTIFACT_BUCKET: ${{ vars.ARTIFACT_BUCKET }}
+      WEB_FUNCTION_NAME: ${{ vars.WEB_FUNCTION_NAME }}
+      WEB_FUNCTION_ROLE_ARN: ${{ vars.WEB_FUNCTION_ROLE_ARN }}
+      NETWORK_CONNECTOR_ARN: ${{ vars.NETWORK_CONNECTOR_ARN }}
+      VALKEY_HOST: ${{ vars.VALKEY_HOST }}
+      VALKEY_PORT: ${{ vars.VALKEY_PORT }}
+      VALKEY_USERNAME: ${{ vars.VALKEY_USERNAME }}
+      VALKEY_SECRET_ARN: ${{ vars.VALKEY_SECRET_ARN }}
+      DISTRIBUTION_ARN: ${{ vars.DISTRIBUTION_ARN }}
+      APP_URL: ${{ vars.APP_URL }}
+      # next.config はビルド時に評価されるので、Server Actions の許可オリジンをここで渡す
+      SERVER_ACTIONS_ALLOWED_ORIGINS: ${{ vars.APP_DOMAIN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec biome ci .
+      - run: pnpm typecheck
+      - run: pnpm package
+
+      # Web Functions の API（lambda-web / lambda-core）は最近追加されたので、AWS CLI を最新版にする
+      - name: Update AWS CLI
+        run: |
+          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+          unzip -q /tmp/awscliv2.zip -d /tmp
+          sudo /tmp/aws/install --update
+          aws --version
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - run: scripts/deploy.sh
