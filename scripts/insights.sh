@@ -8,7 +8,9 @@
 #
 # プリセット:
 #   environments  実行環境ごとのリクエスト数と遅延（スケールアウトしたか、遅い実行環境があるか）
-#   coldstarts    コールドスタートになったリクエストと、実行環境の初期化時間
+#   coldstarts    実行環境の起動（ready）、ウォームアップ、各実行環境の最初のリクエスト。
+#                 最初のリクエストの sinceReadyMs が数百 ms なら、そのリクエストは実行環境の起動を待っていた。
+#                 数秒以上なら、先に起動していた実行環境に後からリクエストが来た
 #   slow          遅かったリクエスト（durationMs の降順で上位 50 件）
 #   errors        ステータスが 500 以上のリクエストと、アプリのエラーログ
 #
@@ -43,8 +45,8 @@ case "$query" in
 | stats count() as requests, pct(durationMs, 50) as p50, pct(durationMs, 95) as p95, max(durationMs) as max by environmentId'
     ;;
   coldstarts)
-    query='fields @timestamp, environmentId, type, path, durationMs, uptimeMs, timings.valkeyConnect, timings.secrets
-| filter coldStart = 1 or type = "ready"
+    query='fields @timestamp, environmentId, type, message, path, durationMs, sinceReadyMs, uptimeMs, timings.valkeyConnect, timings.secrets
+| filter coldStart = 1 or type = "ready" or message like /^warmup/
 | sort @timestamp asc'
     ;;
   slow)

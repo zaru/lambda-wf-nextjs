@@ -223,11 +223,13 @@ TODO の JSON:
 - Cluster モードでは `dnsLookup: (address, cb) => cb(null, address)` を指定し、TLS の SNI がエンドポイント名と一致するようにする
 - 接続タイムアウトは 5 秒、コマンドタイムアウトは 3 秒
 - パスワードは、最初の接続時に Secrets Manager から取得してメモリに保持する（AWS SDK v3 の `@aws-sdk/client-secrets-manager` を使う。経路は NAT 経由）
+- コールドスタートの遅延を減らすため、`instrumentation.ts` の `register()`（Next.js が待ち受けを始めた後に呼ぶ）で、Secrets Manager の取得と Valkey への接続をバックグラウンドで始める（`lib/warmup.ts`）。完了は待たない。完了前に届いたリクエストは、`getValkey()` が保持する作成中の接続を待つ。公式ドキュメントの推奨（重い初期化は待ち受けの開始後に回し、依存する処理は共有の Promise を待つ）に沿った形
 
 ### 4.8 計測のための計装
 
 - すべてのレスポンスに `Server-Timing` ヘッダを付ける（`total`、`valkey`、`external` の所要時間）
 - 実行環境の起動時刻と、処理したリクエスト数をログに出す。1 回目のリクエストに `coldStart: true` を付けて、コールドスタートを識別できるようにする
+- 1 回目のリクエストには、待ち受けを始めてから届くまでの時間（`sinceReadyMs`）も付ける。需要に先回りして起動された実行環境では、`coldStart: true` でも利用者は起動を待っていないので、この値で区別する（数百 ms なら起動を待っていた）
 - アクセスログ（メソッド、パス、ステータス、所要時間、`coldStart`）を JSON で出す
 
 ### 4.9 Lambda Web Functions 向けのエントリポイント
