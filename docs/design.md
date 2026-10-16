@@ -47,7 +47,7 @@ Next.js（App Router）で作る TODO アプリを題材に、Lambda Web Functio
 | 16 | AWS アカウント | 既存プロジェクトがあるアカウントに相乗りする。既存の Terraform とは**別の state で、独立して**管理する（10 章） |
 | 17 | GitHub リポジトリ | `zaru/lambda-wf-nextjs` |
 | 18 | ネットワークの分離 | 既存 VPC とは**完全に分離**する。ピアリング、Transit Gateway、共有の VPC エンドポイントなど、既存 VPC とつながる経路は一切作らない |
-| 19 | Terraform の state | **新しい専用の S3 バケット**を作る（既存プロジェクトのバケットは使わない） |
+| 19 | Terraform の state | **ローカル**（検証用のため。リモートバックエンドは使わない） |
 
 ## 3. 全体アーキテクチャ
 
@@ -320,24 +320,14 @@ Web Function 本体（関数・revision・エンドポイント・リソース�
 ### 7.1 方針
 
 - Terraform は利用者が手元で実行する
-- state は、本プロジェクト専用の新しい S3 バケットに置く（`use_lockfile = true` で S3 のネイティブなロックを使い、DynamoDB は使わない）。バケット名は `-backend-config` で渡す
+- state はローカルの `infra/terraform/terraform.tfstate` に置く。検証用で、Terraform を実行するのは 1 人だけなので、リモートバックエンドとロックは使わない
+  - `*.tfstate`、`*.tfstate.*`、`.terraform/` は `.gitignore` に入れ、コミットしない。state には Valkey のパスワードが平文で入るため
+  - state をなくすと `terraform destroy` で消せなくなり、NAT Gateway などの費用が発生し続ける。検証が終わるまでは手元で保管し、必要ならバックアップを取る
 - 既存プロジェクトのリソースには触れない（10 章）
-
-### 7.1.1 state バケットのブートストラップ
-
-state を置くバケット自体は、それを使う Terraform の中では作れない。そのため、バケットだけを作る小さな Terraform（`infra/bootstrap/`）を分けて用意する。
-
-| 項目 | 内容 |
-| --- | --- |
-| 作るもの | `aws_s3_bucket`（`wf-proto-tfstate-<アカウント ID>`）、バージョニング、SSE-S3、パブリックアクセスブロック、`BucketOwnerEnforced`、TLS 以外のアクセスを拒否するバケットポリシー |
-| bootstrap 自身の state | ローカル（`infra/bootstrap/terraform.tfstate`）。中身はバケット 1 つだけで、失っても `terraform import` で復元できる。`.gitignore` に入れてコミットしない |
-| 削除の保護 | `lifecycle { prevent_destroy = true }` を付ける |
 
 選ばなかった案:
 
-- bootstrap の state を、作ったバケットへ移す（`terraform init -migrate-state`）: 手順が増えるわりに、守る対象がバケット 1 つだけなので効果が薄い
-- AWS CLI でバケットを手作業で作る: 設定（暗号化、パブリックアクセスブロックなど）がコードに残らない
-- すべてのリソース名に接頭辞 `wf-proto` を付け、`default_tags` で `Project = wf-proto` を付ける
+- S3 バックエンド（専用バケットを bootstrap で作る）: 複数人での実行や CI からの実行がないので、バケットと bootstrap の手順を増やすほどの利点がない。本番に移す際は S3 バックエンドに切り替える
 
 ### 7.2 2 段階の apply
 
@@ -365,15 +355,9 @@ sequenceDiagram
 ### 7.3 ディレクトリ構成
 
 ```
-infra/bootstrap/         # state バケットだけを作る（7.1.1 節）
-├── main.tf
-├── outputs.tf
-└── versions.tf
-
 infra/terraform/
 ├── versions.tf          # terraform >= 1.10, hashicorp/aws >= 6.61
 ├── providers.tf         # ap-northeast-1 と、ACM 用の us-east-1（alias）
-├── backend.tf
 ├── variables.tf
 ├── outputs.tf
 ├── network.tf           # VPC、サブネット、IGW、NAT、ルートテーブル
@@ -399,7 +383,7 @@ infra/terraform/
 | flow_logs.tf | `aws_flow_log`、ロググループ、IAM ロール | VPC 単位で ALL を記録、保持 7 日 |
 | elasticache.tf | `aws_elasticache_serverless_cache` | `engine = "valkey"`、最新のメジャーバージョン、`daily_snapshot_time`、`snapshot_retention_limit = 7`、`user_group_id` |
 | | `aws_elasticache_user`、`aws_elasticache_user_group` | アプリ用ユーザー（必要なコマンドとキーだけ許可: `~{todo}:* +@read +@write +@connection -@dangerous`）。`default` ユーザーは無効化する |
-| secrets.tf | `random_password`、`aws_secretsmanager_secret`、`_version` | パスワードの値は state に残る。state バケットへのアクセス制御で守る |
+| secrets.tf | `random_password`、`aws_secretsmanager_secret`、`_version` | パスワードの値は state に残る。state はコミットせず、手元で管理する（7.1 節） |
 | network_connector.tf | オペレーターロール、`aws_lambdacore_network_connector` | `associated_compute_resource_types = ["WebFunction"]`、`network_protocol = "IPv4"` |
 | iam_web_function.tf | 実行ロール | CloudWatch Logs への書き込みと、`secretsmanager:GetSecretValue`（対象のシークレットだけ） |
 | logs.tf | `aws_cloudwatch_log_group` | `/aws/lambda/web/wf-proto-todo`、保持 30 日 |
@@ -558,7 +542,7 @@ Web Function を操作する IAM アクションの名前は、実装時にサ�
 
 | 対象 | 方針 |
 | --- | --- |
-| Terraform の state | 専用の S3 バケットを新しく作る（7.1.1 節）。既存の state を参照しない |
+| Terraform の state | ローカルに置く（7.1 節）。既存の state を参照しない |
 | VPC | 専用の VPC を新しく作り、既存 VPC とは完全に分離する。ピアリング、Transit Gateway、VPC エンドポイントの共有、セキュリティグループの相互参照はしない |
 | リソース名 | すべてに `wf-proto` の接頭辞を付ける。IAM ロール、ロググループ、S3 バケットなどの名前の衝突を防ぐ |
 | タグ | `Project = wf-proto`。費用の切り分けに使う |
@@ -573,18 +557,16 @@ Web Function を操作する IAM アクションの名前は、実装時にサ�
 ### 11.1 初回構築
 
 1. コードを `zaru/lambda-wf-nextjs` に push する
-2. `infra/bootstrap` で `terraform init` → `terraform apply`（state バケットを作る）
-3. `infra/terraform` で `terraform init -backend-config=bucket=<state バケット>` → `terraform apply`（1 回目）
-4. 出力を GitHub の Variables に登録し、deploy.yml を実行する → Web Function が作られる
-5. エンドポイントのホスト名を `web_function_endpoint_domain` に設定して `terraform apply`（2 回目）
-6. `DISTRIBUTION_ARN` と `APP_URL` を Variables に登録し、deploy.yml を再実行する → リソースポリシーが設定される
-7. `https://wf.dev.id.basicinc.jp` で動作を確認する
+2. `infra/terraform` で `terraform init` → `terraform apply`（1 回目）
+3. 出力を GitHub の Variables に登録し、deploy.yml を実行する → Web Function が作られる
+4. エンドポイントのホスト名を `web_function_endpoint_domain` に設定して `terraform apply`（2 回目）
+5. `DISTRIBUTION_ARN` と `APP_URL` を Variables に登録し、deploy.yml を再実行する → リソースポリシーが設定される
+6. `https://wf.dev.id.basicinc.jp` で動作を確認する
 
 ### 11.2 撤去
 
 1. `scripts/destroy-web-function.sh`（Web Function を削除する。Connector を参照している revision を先に消すため）
 2. `infra/terraform` で `terraform destroy`
-3. state バケットも消す場合は、`prevent_destroy` を外してから `infra/bootstrap` で `terraform destroy`（バケットを空にする必要がある）
 
 ## 12. 費用の目安（東京リージョン、月額の概算）
 
@@ -622,7 +604,7 @@ Web Function を操作する IAM アクションの名前は、実装時にサ�
 | Q2 | `id.basicinc.jp` のホストゾーンが、今回デプロイする AWS アカウントにあるか | 解決: ある |
 | Q3 | アカウントに GitHub の OIDC プロバイダがすでにあるか | 解決: ある（別の Org / リポジトリ用）。`data` で参照して共用する |
 | Q4 | 既存 VPC の CIDR | 解決: 既存 VPC とは完全に分離するので、考慮しなくてよい |
-| Q5 | Terraform の state を置く S3 バケット | 解決: 専用のバケットを新しく作る（7.1.1 節） |
+| Q5 | Terraform の state の置き場所 | 解決: ローカル（7.1 節） |
 | Q6 | 負荷試験の合格基準 | 未決定。初回の定常シナリオの後に決める |
 
 ## 15. 実装の進め方
