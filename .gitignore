@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# パッケージング
+dist/
+
+# 環境変数
+.env
+.env.*
+!.env.example
+
+# Terraform（state には Valkey のパスワードが平文で入るため、コミットしない）
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+
+# 負荷試験の結果（生データ）
+loadtest/results/
+
+# OS / エディタ
+.DS_Store
+.vscode/
+.idea/
