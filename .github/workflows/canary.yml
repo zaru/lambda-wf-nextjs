@@ -31,7 +31,7 @@ jobs:
     env:
       WEB_FUNCTION_NAME: ${{ vars.WEB_FUNCTION_NAME }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Update AWS CLI
         run: |
@@ -39,7 +39,7 @@ jobs:
           unzip -q /tmp/awscliv2.zip -d /tmp
           sudo /tmp/aws/install --update
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
