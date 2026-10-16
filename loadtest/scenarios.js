@@ -20,98 +20,77 @@ import {
 const SCENARIO = __ENV.SCENARIO || "latency";
 
 // 動作確認用に、定常・レイテンシのシナリオの長さを短くできる（例: -e DURATION=30s）
-const DURATION = __ENV.DURATION || "10m";
+const DURATION = __ENV.DURATION || "5m";
 
 // 閲覧 80%、書き込み 20%
 const mixedExec = { exec: "mixed" };
 
+// 一定の頻度でリクエストを送るシナリオ（rate 回 / timeUnit）
+function constant(exec, rate, timeUnit) {
+  return {
+    executor: "constant-arrival-rate",
+    exec,
+    rate,
+    timeUnit,
+    duration: DURATION,
+    preAllocatedVUs: 2,
+    maxVUs: 10,
+  };
+}
+
+// 負荷は小さめにしている（4 シナリオの合計で約 1.8 万リクエスト）
 const scenarios = {
-  // レイテンシ: 低負荷でエンドポイントごとの p50 / p95 / p99 を測る
+  // レイテンシ: 低負荷でエンドポイントごとの p50 / p95 / p99 を測る（約 2.6 rps × 5 分 ≒ 800 リクエスト）
   latency: {
-    page: {
-      executor: "constant-arrival-rate",
-      exec: "page",
-      rate: 2,
-      timeUnit: "1s",
-      duration: DURATION,
-      preAllocatedVUs: 5,
-    },
-    action: {
-      executor: "constant-arrival-rate",
-      exec: "action",
-      rate: 1,
-      timeUnit: "1s",
-      duration: DURATION,
-      preAllocatedVUs: 5,
-    },
-    health: {
-      executor: "constant-arrival-rate",
-      exec: "health",
-      rate: 1,
-      timeUnit: "1s",
-      duration: DURATION,
-      preAllocatedVUs: 5,
-    },
-    static: {
-      executor: "constant-arrival-rate",
-      exec: "staticAsset",
-      rate: 1,
-      timeUnit: "1s",
-      duration: DURATION,
-      preAllocatedVUs: 5,
-    },
-    // 外部 API は 10 秒に 1 回だけ
-    external: {
-      executor: "constant-arrival-rate",
-      exec: "external",
-      rate: 1,
-      timeUnit: "10s",
-      duration: DURATION,
-      preAllocatedVUs: 2,
-    },
+    page: constant("page", 1, "1s"),
+    action: constant("action", 1, "2s"),
+    health: constant("health", 1, "2s"),
+    static: constant("staticAsset", 1, "2s"),
+    // 外部 API は 20 秒に 1 回だけ（5 分で 15 回）
+    external: constant("external", 1, "20s"),
   },
-  // 定常: 50 rps を 10 分間
+  // 定常: 10 rps を 5 分間（約 3,000 リクエスト）
   steady: {
     steady: {
       ...mixedExec,
       executor: "constant-arrival-rate",
-      rate: 50,
+      rate: 10,
       timeUnit: "1s",
       duration: DURATION,
-      preAllocatedVUs: 50,
-      maxVUs: 500,
+      preAllocatedVUs: 10,
+      maxVUs: 100,
     },
   },
-  // 段階的な増加: 0 → 500 rps を 15 分かけて増やし、どこで悪化するかを見る
+  // 段階的な増加: 0 → 50 rps を 5 分かけて増やす（約 7,500 リクエスト）
   ramp: {
     ramp: {
       ...mixedExec,
       executor: "ramping-arrival-rate",
       startRate: 0,
       timeUnit: "1s",
-      preAllocatedVUs: 100,
-      maxVUs: 2000,
+      preAllocatedVUs: 10,
+      maxVUs: 200,
       stages: [
-        { target: 100, duration: "3m" },
-        { target: 200, duration: "3m" },
-        { target: 300, duration: "3m" },
-        { target: 400, duration: "3m" },
-        { target: 500, duration: "3m" },
+        { target: 10, duration: "1m" },
+        { target: 20, duration: "1m" },
+        { target: 30, duration: "1m" },
+        { target: 40, duration: "1m" },
+        { target: 50, duration: "1m" },
       ],
     },
   },
-  // スパイク: 0 → 300 rps に瞬時に上げ、5 分間維持する
+  // スパイク: 0 → 50 rps に 5 秒で上げ、2 分間維持する（約 6,100 リクエスト）
   spike: {
     spike: {
       ...mixedExec,
       executor: "ramping-arrival-rate",
       startRate: 0,
       timeUnit: "1s",
-      preAllocatedVUs: 300,
-      maxVUs: 2000,
+      preAllocatedVUs: 50,
+      maxVUs: 200,
       stages: [
-        { target: 300, duration: "5s" },
-        { target: 300, duration: "5m" },
+        { target: 50, duration: "5s" },
+        { target: 50, duration: "2m" },
       ],
     },
   },

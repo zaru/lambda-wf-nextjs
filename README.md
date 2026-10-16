@@ -106,20 +106,20 @@ Actions の **canary** ワークフロー（または手元の `scripts/canary.s
 # 事前に、アカウントの Web Functions の上限（秒間リクエスト数、Arm vCPU 数）を確認する
 aws lambda-web get-web-account-settings
 
-# レイテンシ（低負荷、10 分）
+# レイテンシ（約 2.6 rps × 5 分）
 k6 run -e SCENARIO=latency loadtest/scenarios.js
 
-# 負荷試験
-k6 run -e SCENARIO=steady loadtest/scenarios.js   # 50 rps × 10 分
-k6 run -e SCENARIO=ramp   loadtest/scenarios.js   # 0 → 500 rps（15 分）
-k6 run -e SCENARIO=spike  loadtest/scenarios.js   # 0 → 300 rps に瞬時に上げて 5 分
+# 負荷試験（4 シナリオの合計で約 1.8 万リクエスト）
+k6 run -e SCENARIO=steady loadtest/scenarios.js   # 10 rps × 5 分
+k6 run -e SCENARIO=ramp   loadtest/scenarios.js   # 0 → 50 rps（5 分）
+k6 run -e SCENARIO=spike  loadtest/scenarios.js   # 5 秒で 50 rps に上げて 2 分
 
 # コールドスタート（既定は 5/15/30/60 分の間隔で、合計約 2 時間）
 loadtest/coldstart.sh
 ```
 
 - 書き込みは、あらかじめ用意した TODO（既定 30 件）の完了状態を切り替えます
-- `/api/diag/external` は第三者の祝日 API を呼ぶため、`latency` シナリオで 10 秒に 1 回だけ呼びます。負荷試験には含めないでください
+- `/api/diag/external` は第三者の祝日 API を呼ぶため、`latency` シナリオで 20 秒に 1 回だけ呼びます。負荷試験には含めないでください
 - サーバー側の内訳は、レスポンスの `Server-Timing` ヘッダと、CloudWatch Logs（`/aws/lambda/web/wf-proto-todo`）のアクセスログ（`type: "access"`、`coldStart`）で確認できます
 
 ## 撤去
