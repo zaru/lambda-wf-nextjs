@@ -8,11 +8,8 @@ data "aws_iam_policy_document" "web_function_assume" {
       identifiers = ["lambda.amazonaws.com"]
     }
 
-    condition {
-      test     = "StringEquals"
-      variable = "aws:SourceAccount"
-      values   = [local.account_id]
-    }
+    # Network Connector のオペレーターロールと同じく、条件は付けない（公式ドキュメントの例どおり）。
+    # Web Functions が aws:SourceAccount を渡すことを確認できていないため
   }
 }
 

@@ -11,6 +11,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.9"
     }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.13"
+    }
   }
 
   # 検証用のため state はローカルに置く（*.tfstate はコミットしない）

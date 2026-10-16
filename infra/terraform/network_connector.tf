@@ -8,11 +8,9 @@ data "aws_iam_policy_document" "connector_operator_assume" {
       identifiers = ["lambda.amazonaws.com"]
     }
 
-    condition {
-      test     = "StringEquals"
-      variable = "aws:SourceAccount"
-      values   = [local.account_id]
-    }
+    # aws:SourceAccount などの条件は付けない。Network Connector のサービスは条件キーを渡さないようで、
+    # 条件を付けると "unable to assume the provided NetworkConnectorOperatorRole" で作成に失敗する
+    # （公式ドキュメントと AWS SAM が生成する信頼ポリシーも条件なし）
   }
 }
 
@@ -71,6 +69,16 @@ resource "aws_lambdacore_network_connector" "web" {
     delete = "20m"
   }
 
-  # 権限が付く前に作成が始まると失敗するため
-  depends_on = [aws_iam_role_policy.connector_operator]
+  depends_on = [time_sleep.connector_operator_propagation]
+}
+
+# IAM ロールの作成直後は、ほかのサービスから引き受けられるようになるまで時間がかかる。
+# 待たずに Connector を作ると、ロールを引き受けられずに失敗することがある
+resource "time_sleep" "connector_operator_propagation" {
+  create_duration = "30s"
+
+  triggers = {
+    role_arn    = aws_iam_role.connector_operator.arn
+    policy_hash = sha256(aws_iam_role_policy.connector_operator.policy)
+  }
 }
