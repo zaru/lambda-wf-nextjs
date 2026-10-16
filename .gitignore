@@ -24,7 +24,8 @@ dist/
 crash.log
 
 # 負荷試験の結果（生データ）
-loadtest/results/
+loadtest/results/*
+!loadtest/results/.gitkeep
 
 # OS / エディタ
 .DS_Store
