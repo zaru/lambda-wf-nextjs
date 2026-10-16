@@ -392,7 +392,7 @@ infra/terraform/
 | cloudfront.tf | `aws_cloudfront_origin_access_control` | `origin_type = "lambda"`、`signing_behavior = "always-amz-auth"`、`signing_protocol = "sigv4"` |
 | | `aws_cloudfront_distribution` | 7.5 節のとおり |
 | | `aws_route53_record`（A / AAAA エイリアス） | `wf.dev.id.basicinc.jp` → ディストリビューション |
-| github_oidc.tf | デプロイ用ロール | OIDC プロバイダは `data "aws_iam_openid_connect_provider"` で既存を参照する（既存プロジェクトの Terraform が管理しているので変更しない）。信頼条件は `aud = sts.amazonaws.com` かつ `sub = repo:zaru/lambda-wf-nextjs:ref:refs/heads/main` |
+| github_oidc.tf | デプロイ用ロール | OIDC プロバイダは `data "aws_iam_openid_connect_provider"` で既存を参照する（既存プロジェクトの Terraform が管理しているので変更しない）。信頼条件は `aud = sts.amazonaws.com` かつ `sub = repo:zaru@235650/lambda-wf-nextjs@1421610968:ref:refs/heads/main`（リポジトリが不変の ID を含む sub の形式を使っているため。変数 `github_oidc_sub_prefix`） |
 
 ### 7.5 CloudFront の設定
 

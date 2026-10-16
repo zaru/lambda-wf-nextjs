@@ -57,6 +57,16 @@ variable "github_repository" {
   default     = "zaru/lambda-wf-nextjs"
 }
 
+variable "github_oidc_sub_prefix" {
+  description = <<-EOT
+    GitHub の OIDC トークンの sub の接頭辞。リポジトリが不変の ID を使う形式（use_immutable_subject）なので、
+    owner@<owner_id>/repo@<repo_id> になる。値は次のコマンドの sub_claim_prefix で確認できる:
+    gh api repos/<owner>/<repo>/actions/oidc/customization/sub
+  EOT
+  type        = string
+  default     = "repo:zaru@235650/lambda-wf-nextjs@1421610968"
+}
+
 variable "valkey_major_engine_version" {
   description = "ElastiCache Serverless の Valkey のメジャーバージョン"
   type        = string

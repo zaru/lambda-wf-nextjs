@@ -23,11 +23,13 @@ data "aws_iam_policy_document" "github_deploy_assume" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # main ブランチのワークフローだけに許可する
+    # main ブランチのワークフローだけに許可する。
+    # sub は不変の ID を含む形式（repo:owner@id/repo@id:ref:...）なので、名前だけの形式は許可しない。
+    # 名前だけの形式も許可すると、リポジトリの削除後に同じ名前で作られた別のリポジトリにも権限が渡りうる
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:ref:refs/heads/main"]
+      values   = ["${var.github_oidc_sub_prefix}:ref:refs/heads/main"]
     }
   }
 }
