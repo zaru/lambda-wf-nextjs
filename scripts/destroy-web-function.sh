@@ -12,7 +12,7 @@ if ! aws lambda-web get-web-function --function-name "$WEB_FUNCTION_NAME" >/dev/
   exit 0
 fi
 
-read -r -p "$WEB_FUNCTION_NAME を削除します（region: $AWS_REGION）。よろしいですか？ [y/N] " answer
+read -r -p "$WEB_FUNCTION_NAME を削除します（region: ${AWS_REGION}）。よろしいですか？ [y/N] " answer
 [[ "$answer" == "y" ]] || { echo "中止しました"; exit 1; }
 
 aws lambda-web delete-web-function --function-name "$WEB_FUNCTION_NAME"

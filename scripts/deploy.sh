@@ -120,7 +120,7 @@ ENDPOINT_DOMAIN=$(aws lambda-web get-web-function-endpoint \
 ENDPOINT_ARN=$(aws lambda-web get-web-function-endpoint \
   --function-name "$WEB_FUNCTION_NAME" --endpoint-name "$ENDPOINT_NAME" \
   --query endpointArn --output text)
-echo "endpoint domain: $ENDPOINT_DOMAIN（Terraform の web_function_endpoint_domain に設定する値）"
+echo "endpoint domain: ${ENDPOINT_DOMAIN}（Terraform の web_function_endpoint_domain に設定する値）"
 
 # 6. CloudFront の OAC からの呼び出しを許可する（毎回上書きするので冪等）
 if [[ -n "${DISTRIBUTION_ARN:-}" ]]; then

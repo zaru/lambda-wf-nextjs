@@ -51,7 +51,7 @@ case "$command" in
     update --auto-deployment-mode Disabled \
       --revision-weights "$(jq -cn --arg cur "$current" --arg new "$target" --argjson p "$percent" \
         '[{revisionId: $cur, weight: (100 - $p)}, {revisionId: $new, weight: $p}]')"
-    echo "$target に ${percent}% を割り当てました（残りは $current）"
+    echo "$target に ${percent}% を割り当てました（残りは ${current}）"
     ;;
   promote)
     target="${2:?revision-id を指定してください}"
@@ -64,7 +64,7 @@ case "$command" in
     current=$(stable_revision)
     update --auto-deployment-mode Disabled \
       --revision-weights "$(jq -cn --arg id "$current" '[{revisionId: $id, weight: 100}]')"
-    echo "rolled back to $current（自動デプロイは無効のまま。戻すときは promote を使う）"
+    echo "rolled back to ${current}（自動デプロイは無効のまま。戻すときは promote を使う）"
     ;;
   *)
     echo "unknown command: $command" >&2
