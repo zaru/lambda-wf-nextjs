@@ -122,6 +122,20 @@ loadtest/coldstart.sh
 - `/api/diag/external` は第三者の祝日 API を呼ぶため、`latency` シナリオで 20 秒に 1 回だけ呼びます。負荷試験には含めないでください
 - サーバー側の内訳は、レスポンスの `Server-Timing` ヘッダと、CloudWatch Logs（`/aws/lambda/web/wf-proto-todo`）のアクセスログ（`type: "access"`、`coldStart`）で確認できます
 
+### ログの集計（CloudWatch Logs Insights）
+
+`scripts/insights.sh` で、計測した時間帯（UTC）のログを集計できます。
+
+```bash
+scripts/insights.sh 2026-10-16T05:45:00Z 2026-10-16T06:15:00Z environments  # 実行環境ごとのリクエスト数と遅延
+scripts/insights.sh 2026-10-16T05:45:00Z 2026-10-16T06:15:00Z coldstarts    # コールドスタートと初期化時間
+scripts/insights.sh 2026-10-16T05:45:00Z 2026-10-16T06:15:00Z slow          # 遅かったリクエストの上位 50 件
+scripts/insights.sh 2026-10-16T05:45:00Z 2026-10-16T06:15:00Z errors        # 5xx とエラーログ
+scripts/insights.sh <開始> <終了> 'fields @message | limit 20'                # 任意のクエリ
+```
+
+結果が空のときは、`LOG_GROUP=/aws/lambda/web/wf-proto-todo.local` を付けて試してください（Web Functions は、リージョン内のログを `.local` に書いてから集約します）。
+
 ## 撤去
 
 ```bash
