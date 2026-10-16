@@ -8,7 +8,9 @@ Lambda Web Functions を本番に近い構成で検証するための TODO ア�
 - 入口: CloudFront（OAC）＋ `wf.dev.id.basicinc.jp`
 - 外部通信: NAT Gateway 経由（祝日 API、Secrets Manager）
 
-設計は [docs/design.md](docs/design.md)、ネットワーク構成の検討は [docs/network-options.md](docs/network-options.md) を参照してください。 デプロイ中に新旧の revision が混ざるかの調査は [docs/deploy-mixing.md](docs/deploy-mixing.md) を参照してください。
+設計は [docs/design.md](docs/design.md)、ネットワーク構成の検討は [docs/network-options.md](docs/network-options.md) を参照してください。
+
+検証を再開するときは、まず [docs/notes.md](docs/notes.md)（現在の状態、未決定事項、作業中に踏んだ落とし穴）を読んでください。 デプロイ中に新旧の revision が混ざるかの調査は [docs/deploy-mixing.md](docs/deploy-mixing.md) を参照してください。
 
 ## 必要なもの
 
