@@ -4,7 +4,7 @@
 
 ## 1. 現在の状態
 
-**2026-10-16 に撤去済み。** AWS のリソースは `scripts/destroy-web-function.sh` と `terraform destroy` で削除し、GitHub リポジトリの Variables（13 件）も削除した。費用は発生していない。
+**2026-10-16 に撤去済み。** AWS のリソースは `scripts/destroy-web-function.sh` と `terraform destroy` で削除し、GitHub リポジトリの Variables（13 件）も削除した。deploy ワークフローは無効にしてある。費用は発生していない。
 
 ### 再開するときの手順
 
@@ -13,6 +13,7 @@ README の「構築」の手順を最初からやり直す。撤去前と比べ�
 - エンドポイントのホスト名、CloudFront のディストリビューション、Network Connector などは、すべて新しい値になる
 - `infra/terraform/terraform.tfvars` には撤去前のエンドポイントのホスト名が残っているので、1 回目の apply の前に消すか、`web_function_endpoint_domain = ""` にする（残したままだと、存在しないオリジンで CloudFront が作られる）
 - GitHub の Variables は、README の手順 2 で登録し直す
+- deploy ワークフローは無効にしてある（撤去後の push で失敗しないように）。手順 3 の前に `gh workflow enable deploy.yml -R zaru/lambda-wf-nextjs` で有効に戻す
 
 ### 撤去前の構成の記録
 
