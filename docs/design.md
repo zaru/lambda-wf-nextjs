@@ -2,7 +2,7 @@
 
 - 作成日: 2026-10-15
 - 更新日: 2026-10-16
-- ステータス: 要件確定、設計レビュー待ち
+- ステータス: 実装済み（AWS への適用前）
 - 関連: [ネットワーク構成の選択肢](./network-options.md)
 
 ## 1. 概要
@@ -252,7 +252,7 @@ require("./server.js");
 3. `lambda/index.js` を standalone ディレクトリの直下にコピーする
 4. standalone ディレクトリの中身をルートに置いた zip（`dist/app.zip`）を作る
 
-pnpm の既定の `node_modules` はシンボリックリンクで構成されるため、`.npmrc` に `node-linker=hoisted` を書いて実体ファイルにする。
+pnpm の既定の `node_modules` はシンボリックリンクで構成されるため、`pnpm-workspace.yaml` に `nodeLinker: hoisted` を書いて実体ファイルにする（pnpm 10 以降は、pnpm の設定を `.npmrc` ではなく `pnpm-workspace.yaml` に書く）。
 
 ### 4.11 ローカル開発
 
@@ -276,8 +276,8 @@ pnpm dev
 | リソースポリシー | `cloudfront.amazonaws.com` に `lambda:InvokeWebFunctionEndpoint` を許可（`aws:SourceArn` を自分のディストリビューションに限定） | |
 | 自動デプロイモード | `LatestRevision` | カナリアのときだけ `Disabled` にする |
 | 最大実行環境数・レート制限 | 指定しない（既定値） | 過剰アクセス対策は不要という決定のため。負荷試験の前にアカウントの上限を確認する（9.4 節） |
-| egress | Network Connector（バージョン付き ARN） | |
-| ログ | `/aws/lambda/web/wf-proto-todo` | Terraform で保持 30 日のロググループを先に作っておく |
+| egress | Network Connector（バージョン付き ARN） | デプロイ時に最新のバージョンを調べて指定する（8.2 節） |
+| ログ | `/aws/lambda/web/wf-proto-todo` | Web Functions はリージョン内のログを `<name>.local` に書き、ホームリージョンの `<name>` に集約する。Terraform で両方を保持 30 日で先に作っておく |
 
 ### 5.1 Web Function を Terraform で管理しない理由
 
@@ -356,7 +356,7 @@ sequenceDiagram
 
 ```
 infra/terraform/
-├── versions.tf          # terraform >= 1.10, hashicorp/aws >= 6.61
+├── versions.tf          # terraform >= 1.8, hashicorp/aws ~> 6.69
 ├── providers.tf         # ap-northeast-1 と、ACM 用の us-east-1（alias）
 ├── variables.tf
 ├── outputs.tf
@@ -429,18 +429,22 @@ infra/terraform/
 
 ### 7.7 出力（GitHub Actions の Variables に登録する）
 
-| 出力 | GitHub Variable | 用途 |
-| --- | --- | --- |
-| `aws_region` | `AWS_REGION` | |
-| `deploy_role_arn` | `AWS_DEPLOY_ROLE_ARN` | OIDC で AssumeRole するロール |
-| `artifact_bucket` | `ARTIFACT_BUCKET` | zip のアップロード先 |
-| `web_function_execution_role_arn` | `WEB_FUNCTION_ROLE_ARN` | revision の `executionRoleArn` |
-| `network_connector_arn` | `NETWORK_CONNECTOR_ARN` | **バージョン付き** ARN |
-| `valkey_endpoint` | `VALKEY_HOST` | |
-| `valkey_username` | `VALKEY_USERNAME` | |
-| `valkey_secret_arn` | `VALKEY_SECRET_ARN` | |
-| `cloudfront_distribution_arn` | `DISTRIBUTION_ARN` | リソースポリシーの `aws:SourceArn`（2 回目の apply 後） |
-| `app_url` | `APP_URL` | スモークテスト先（2 回目の apply 後） |
+出力 `github_variables` に、GitHub の Repository variables にそのまま登録できる形（名前と値の組）でまとめる。登録手順は README を参照。
+
+| GitHub Variable | 内容 |
+| --- | --- |
+| `AWS_REGION` | `ap-northeast-1` |
+| `AWS_DEPLOY_ROLE_ARN` | OIDC で AssumeRole するロール |
+| `ARTIFACT_BUCKET` | zip のアップロード先 |
+| `WEB_FUNCTION_NAME` | `wf-proto-todo` |
+| `WEB_FUNCTION_ROLE_ARN` | revision の `executionRoleArn` |
+| `NETWORK_CONNECTOR_ARN` | Connector の ARN（バージョンなし）。バージョン付き ARN はデプロイ時に解決する |
+| `VALKEY_HOST` / `VALKEY_PORT` | Serverless キャッシュのエンドポイント |
+| `VALKEY_USERNAME` | アプリ用ユーザー |
+| `VALKEY_SECRET_ARN` | パスワードを置いたシークレット |
+| `APP_DOMAIN` | Server Actions の許可オリジン（ビルド時に使う） |
+| `DISTRIBUTION_ARN` | リソースポリシーの `aws:SourceArn`（2 回目の apply 後に出力される） |
+| `APP_URL` | スモークテスト先（2 回目の apply 後に出力される） |
 
 いずれも秘密情報ではないので、Variables に登録する。
 
@@ -448,12 +452,13 @@ infra/terraform/
 
 | 権限 | リソース |
 | --- | --- |
-| `s3:PutObject`, `s3:GetObjectVersion` | アーティファクトバケット |
-| Web Function の作成・取得、revision の作成、エンドポイントの取得・更新、リソースポリシーの設定 | `wf-proto-todo` 関数 |
-| `lambda:PassNetworkConnector` | 対象の Network Connector |
+| `s3:PutObject`, `s3:GetObject`, `s3:GetObjectVersion` | アーティファクトバケット（revision の作成時、Lambda は呼び出し元の権限でパッケージを読む） |
+| `lambda:*WebFunction*`, `lambda:PutResourcePolicy`, `lambda:GetResourcePolicy`, `lambda:TagResource`, `lambda:ListTags` | `wf-proto-todo` 関数とその配下（revision、エンドポイント）だけ |
+| `lambda:GetWebAccountSettings` | `*` |
+| `lambda:GetNetworkConnector`, `lambda:PassNetworkConnector` | 対象の Network Connector とそのバージョン |
 | `iam:PassRole` | Web Function の実行ロール（条件 `iam:PassedToService = lambda.amazonaws.com`） |
 
-Web Function を操作する IAM アクションの名前は、実装時にサービス認可リファレンスで確認して確定させる。
+Web Function の個々の操作の IAM アクション名を網羅した資料が見つからなかったため、`lambda:*WebFunction*` をこの関数の ARN に絞って許可する。
 
 ## 8. CI/CD 設計（GitHub Actions）
 
@@ -472,16 +477,18 @@ Web Function を操作する IAM アクションの名前は、実装時にサ�
 2. pnpm install --frozen-lockfile → biome ci → tsc --noEmit
 3. scripts/package.sh → dist/app.zip
 4. configure-aws-credentials（OIDC）
-5. aws s3 cp → VersionId を取得
-6. get-web-function
+5. aws s3api put-object → VersionId を取得
+6. get-network-connector → 状態が ACTIVE であることを確かめ、LatestVersionArn（バージョン付き ARN）を取得
+7. get-web-function
    ├─ 存在しない → create-web-function（revision ＋ エンドポイント: HomeRegion / IamAuth / LatestRevision）
    └─ 存在する   → create-web-function-revision
-7. revision が Active になるまで待つ
-8. DISTRIBUTION_ARN が登録されていれば put-resource-policy（毎回上書き。冪等）
-9. APP_URL が登録されていれば、GET $APP_URL/api/health でスモークテスト
-10. Job Summary に revision ID と URL を書く
+8. revision が Active になるまで待つ
+9. DISTRIBUTION_ARN が登録されていれば put-resource-policy（毎回上書き。冪等）
+10. APP_URL が登録されていれば、GET $APP_URL/api/health でスモークテスト
+11. Job Summary に revision ID、エンドポイントのホスト名、URL を書く
 ```
 
+- 処理の本体は `scripts/deploy.sh` に置き、同じ環境変数を設定すれば手元からも実行できるようにする
 - `concurrency: deploy` を設定し、デプロイを直列に実行する
 - revision の `description` には `${GITHUB_SHA}` を入れる
 - revision の環境変数: `NODE_ENV=production`、`VALKEY_*`（4.7 節）、`HOLIDAY_API_URL`
@@ -531,6 +538,8 @@ Web Function を操作する IAM アクションの名前は、実装時にサ�
 | スパイク | 0 → 300 rps に瞬時に上げ、5 分間維持する | スケールアウトの速さ、コールドスタートの集中具合 |
 
 - リクエストの内訳は、閲覧（`GET /`）80%、書き込み（Server Action）20%
+- 書き込みは、あらかじめ用意した TODO（既定 30 件）の完了状態の切り替えにする。追加にすると、500 件の上限に数秒で達するため
+- Server Action の ID はビルドごとに変わりうるので、k6 の `setup()` で画面とクライアント JS から取り出す
 - 祝日 API は叩かない（キャッシュがあるので、通常の閲覧では外部通信は発生しない）
 - 余力があれば、実行環境あたりの最大同時リクエスト数（16 / 64 / 128）を変えて比べる
 - **事前の確認**: `aws lambda-web get-web-account-settings` で、アカウントの秒間リクエスト数と Arm vCPU 数の上限を確認する。必要なら上限の引き上げを申請する
@@ -587,14 +596,15 @@ Web Function を操作する IAM アクションの名前は、実装時にサ�
 | # | 内容 | 対応 |
 | --- | --- | --- |
 | R1 | Lambda Web Functions は GA 直後で、事例と情報が少ない | 最初に health API だけの状態でデプロイし、Connector と Valkey、NAT の疎通を確かめる |
-| R2 | `aws_lambdacore_network_connector` で、バージョン付き ARN を取り出す属性の名前 | 実装時にプロバイダのドキュメントで確認する |
-| R3 | `aws_cloudfront_origin_access_control` が `always-amz-auth` を受け付けるか（プロバイダのバリデーション） | 受け付けない場合は、プロバイダのバージョンを上げる。対応版がなければ、OAC だけ CLI で作って `data` で参照する |
-| R4 | Web Function を操作する IAM アクションの名前 | 実装時に確定させる |
-| R5 | ElastiCache のユーザーグループに `default` ユーザーが必須か（Valkey エンジンの場合） | 実装時に確認する。必須なら、無効化した `default` ユーザーを入れる |
-| R6 | Server Actions の Origin 検証（4.3 節） | `serverActions.allowedOrigins` で対応する。最初のデプロイで動作を確認する |
-| R7 | pnpm と Next.js standalone、zip の相性 | `node-linker=hoisted` で避ける |
+| R2 | `aws_lambdacore_network_connector` で、バージョン付き ARN を取り出す属性の名前 | **解消**: 属性はなかった（`arn` のみ）。デプロイ時に `get-network-connector` の `LatestVersionArn` を取得する方式にした |
+| R3 | `aws_cloudfront_origin_access_control` が `always-amz-auth` を受け付けるか（プロバイダのバリデーション） | **解消**: provider 6.69.1 の `terraform validate` で受け付けることを確認した |
+| R4 | Web Function を操作する IAM アクションの名前 | **対応済み**: `lambda:*WebFunction*` を関数の ARN に絞って許可した（7.8 節）。初回デプロイで権限不足が出ないか確認する |
+| R5 | ElastiCache のユーザーグループに `default` ユーザーが必須か（Valkey エンジンの場合） | 資料上は Redis OSS エンジンでのみ必須。`default` ユーザーなしで作る。apply でエラーになった場合は、無効化した `default` ユーザーを追加する |
+| R6 | Server Actions の Origin 検証（4.3 節） | `serverActions.allowedOrigins` で対応した。ローカルで、許可した Origin だけが通ることを確認済み。CloudFront 経由での動作は最初のデプロイで確認する |
+| R7 | pnpm と Next.js standalone、zip の相性 | **解消**: `nodeLinker: hoisted` で、`node_modules` が実体ファイルになることを確認した |
 | R8 | アイドル状態からゼロまでスケールインする時間が公開されていない | 9.2 節で実測する |
 | R9 | アカウントの Web Functions のクォータが、負荷試験の目標に足りない | 9.4 節の事前の確認で把握し、必要なら引き上げを申請する |
+| R10 | ACL の `-@dangerous` で、クラスタモードのクライアントが使うコマンドが拒否されないか | `CLUSTER SLOTS` は対象外のはずだが、初回デプロイで `NOPERM` が出ないか確認する |
 
 ## 14. 未決定事項
 
