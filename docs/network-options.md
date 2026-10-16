@@ -1,7 +1,7 @@
 # Lambda Web Functions のネットワーク構成の選択肢
 
 - 作成日: 2026-10-16
-- ステータス: 検討中
+- ステータス: 決定（2026-10-16）
 - 関連: [設計書](./design.md)
 
 Lambda Web Functions（2026-10-12 GA）を採用するときのネットワーク構成を、調査結果をもとに整理する。
@@ -217,16 +217,16 @@ Web Functions ＋ IamAuth の注意点:
 - `aws:SourceVpc` では絞れない（VPC エンドポイントを前提とした条件のため）
 - `aws:SourceIp` で絞れるかどうかは未検証（Web Functions 用に記載されている条件キーは、認証タイプとタグだけ）
 
-## 6. 今回の TODO アプリへの当てはめ
+## 6. 今回の検証プロジェクトへの当てはめ
 
-| 軸 | TODO アプリ |
+| 軸 | 検証プロジェクト |
 | --- | --- |
-| 受信の閉域 | 不要（外部から誰でもアクセスできる） |
-| VPC 内のリソースへのアクセス | する（ElastiCache for Valkey） |
-| 外部通信 | しない |
+| 受信の閉域 | 不要（外部から誰でもアクセスできる。入口は CloudFront） |
+| VPC 内のリソースへのアクセス | する（ElastiCache Serverless for Valkey） |
+| 外部通信 | する（祝日 API、Secrets Manager） |
 | IP 固定・監査 | 不要 |
 
-→ **Connector のみ**の構成に当たる。本番を想定するなら、認証や監視を足した時点で外部通信が発生し、Connector ＋ NAT Gateway に移ることになる。そのため、NAT Gateway を Terraform の変数で後から追加できる形で作っておく。
+→ **Connector ＋ NAT Gateway** の構成にする（2026-10-16 決定）。本番に近い形で検証するため、外部 API を呼ぶ機能をあえて加えた。NAT Gateway は検証用なので 1 台だけにする。詳細は [設計書](./design.md) を参照。
 
 ## 参考
 
