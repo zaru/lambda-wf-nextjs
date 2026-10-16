@@ -260,7 +260,7 @@ Web Function 本体（関数・revision・エンドポイント）は GitHub Act
 | VPC | `10.0.0.0/16`（DNS サポートと DNS ホスト名を有効化） |
 | private subnet a | `10.0.1.0/24`（ap-northeast-1a） |
 | private subnet c | `10.0.2.0/24`（ap-northeast-1c） |
-| Internet Gateway / NAT Gateway | **作らない** |
+| Internet Gateway / NAT Gateway | 既定では**作らない**（`enable_nat_gateway` で追加できる） |
 
 - アプリが VPC 経由で通信する相手は Valkey だけなので、NAT Gateway は要らない（固定費を避けるため）
   - Network Connector を付けると、外向き通信はすべて VPC 経由になる。将来アプリから外部 API や AWS API を呼ぶ場合は、NAT Gateway か VPC エンドポイントを追加する
@@ -322,6 +322,7 @@ infra/terraform/
 | `github_repository` | （必須） | `owner/repo` 形式 |
 | `create_github_oidc_provider` | `true` | OIDC プロバイダが既にあれば `false` |
 | `web_function_name` | `todo-demo` | IAM ポリシーのリソース ARN を絞るために使う |
+| `enable_nat_gateway` | `false` | `true` にすると Public Subnet、Internet Gateway、NAT Gateway を追加し、Connector のサブネットの外向き経路を NAT に向ける（外部通信が必要になったとき用。[network-options.md](./network-options.md) 6 章） |
 
 ### 6.5 出力（GitHub Actions の Variables に登録する）
 
