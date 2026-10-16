@@ -46,7 +46,7 @@ case "$query" in
     ;;
   coldstarts)
     query='fields @timestamp, environmentId, type, message, path, durationMs, sinceReadyMs, uptimeMs, timings.valkeyConnect, timings.secrets
-| filter coldStart = 1 or type = "ready" or message like /^warmup/
+| filter coldStart = 1 or type = "ready" or @message like /warmup/
 | sort @timestamp asc'
     ;;
   slow)
@@ -56,8 +56,8 @@ case "$query" in
 | limit 50'
     ;;
   errors)
-    query='fields @timestamp, environmentId, level, message, errorName, errorMessage, method, path, status
-| filter status >= 500 or level = "error" or level = "warn"
+    query='fields @timestamp, environmentId, level, message, errorName, errorMessage, method, path, status, @message
+| filter status >= 500 or level = "error" or level = "warn" or level = "ERROR" or level = "WARN"
 | sort @timestamp asc'
     ;;
 esac
