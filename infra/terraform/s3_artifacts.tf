@@ -64,6 +64,25 @@ resource "aws_s3_bucket_lifecycle_configuration" "artifacts" {
 }
 
 data "aws_iam_policy_document" "artifacts" {
+  # revision の作成時に、Lambda サービスがパッケージを読む（呼び出し元の権限とは別に必要）。
+  # 公式ドキュメントのとおり、この Web Function の revision からのアクセスだけに絞る
+  statement {
+    sid       = "AllowLambdaWebFunctionCodeAccess"
+    actions   = ["s3:GetObject", "s3:GetObjectVersion"]
+    resources = ["${aws_s3_bucket.artifacts.arn}/${var.web_function_name}/*"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["${local.web_function_arn}/revision/*"]
+    }
+  }
+
   statement {
     sid       = "DenyInsecureTransport"
     effect    = "Deny"
