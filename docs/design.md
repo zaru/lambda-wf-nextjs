@@ -2,7 +2,7 @@
 
 - 作成日: 2026-10-15
 - 更新日: 2026-10-16
-- ステータス: 実装済み（AWS への適用前）
+- ステータス: 構築済み（2026-10-16 に CloudFront 経由での動作を確認）
 - 関連: [ネットワーク構成の選択肢](./network-options.md)
 
 ## 1. 概要
@@ -595,16 +595,19 @@ Web Function の個々の操作の IAM アクション名を網羅した資料�
 
 | # | 内容 | 対応 |
 | --- | --- | --- |
-| R1 | Lambda Web Functions は GA 直後で、事例と情報が少ない | 最初に health API だけの状態でデプロイし、Connector と Valkey、NAT の疎通を確かめる |
+| R1 | Lambda Web Functions は GA 直後で、事例と情報が少ない | **確認済み**: CloudFront → OAC → Web Function → Connector → Valkey、および NAT 経由の外部通信（祝日 API、Secrets Manager）が動いた。構築中に、ドキュメントからは読み取りにくい要件が 3 つ見つかった（R11〜R13） |
 | R2 | `aws_lambdacore_network_connector` で、バージョン付き ARN を取り出す属性の名前 | **解消**: 属性はなかった（`arn` のみ）。デプロイ時に `get-network-connector` の `LatestVersionArn` を取得する方式にした |
 | R3 | `aws_cloudfront_origin_access_control` が `always-amz-auth` を受け付けるか（プロバイダのバリデーション） | **解消**: provider 6.69.1 の `terraform validate` で受け付けることを確認した |
-| R4 | Web Function を操作する IAM アクションの名前 | **対応済み**: `lambda:*WebFunction*` を関数の ARN に絞って許可した（7.8 節）。初回デプロイで権限不足が出ないか確認する |
-| R5 | ElastiCache のユーザーグループに `default` ユーザーが必須か（Valkey エンジンの場合） | 資料上は Redis OSS エンジンでのみ必須。`default` ユーザーなしで作る。apply でエラーになった場合は、無効化した `default` ユーザーを追加する |
-| R6 | Server Actions の Origin 検証（4.3 節） | `serverActions.allowedOrigins` で対応した。ローカルで、許可した Origin だけが通ることを確認済み。CloudFront 経由での動作は最初のデプロイで確認する |
+| R4 | Web Function を操作する IAM アクションの名前 | **確認済み**: `lambda:*WebFunction*` を関数の ARN に絞った許可で、作成・revision の追加・リソースポリシーの設定ができた |
+| R5 | ElastiCache のユーザーグループに `default` ユーザーが必須か（Valkey エンジンの場合） | **確認済み**: `default` ユーザーなしで作成でき、アプリ用ユーザーで接続できた |
+| R6 | Server Actions の Origin 検証（4.3 節） | **確認済み**: `serverActions.allowedOrigins` の設定で、CloudFront 経由の Server Actions が動いた |
 | R7 | pnpm と Next.js standalone、zip の相性 | **解消**: `nodeLinker: hoisted` で、`node_modules` が実体ファイルになることを確認した |
 | R8 | アイドル状態からゼロまでスケールインする時間が公開されていない | 9.2 節で実測する |
 | R9 | アカウントの Web Functions のクォータが、負荷試験の目標に足りない | 9.4 節の事前の確認で把握し、必要なら引き上げを申請する |
-| R10 | ACL の `-@dangerous` で、クラスタモードのクライアントが使うコマンドが拒否されないか | `CLUSTER SLOTS` は対象外のはずだが、初回デプロイで `NOPERM` が出ないか確認する |
+| R10 | ACL の `-@dangerous` で、クラスタモードのクライアントが使うコマンドが拒否されないか | **確認済み**: クラスタモードのクライアントで接続し、読み書きできた |
+| R11 | Network Connector のオペレーターロールと、Web Function の実行ロールの信頼ポリシー | **対応済み**: `aws:SourceAccount` 条件を付けると、Connector の作成が「ロールを引き受けられない」で失敗した。ドキュメントの例どおり条件なしにした。あわせて、ロールの作成後 30 秒待ってから Connector を作るようにした |
+| R12 | GitHub の OIDC トークンの `sub` の形式 | **対応済み**: リポジトリが不変の ID を含む形式（`use_immutable_subject`）だったため、信頼ポリシーをその形式に合わせた |
+| R13 | デプロイパッケージを置く S3 バケットのポリシー | **対応済み**: revision の作成時に、Lambda サービス自身がパッケージを読めることが求められる。バケットポリシーで `lambda.amazonaws.com` に読み取りを許可した（`aws:SourceArn` で、この関数の revision に限定） |
 
 ## 14. 未決定事項
 
