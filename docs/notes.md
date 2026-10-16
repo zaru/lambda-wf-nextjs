@@ -4,35 +4,31 @@
 
 ## 1. 現在の状態
 
-### AWS（`ap-northeast-1`、アカウント 881893826735）
+**2026-10-16 に撤去済み。** AWS のリソースは `scripts/destroy-web-function.sh` と `terraform destroy` で削除し、GitHub リポジトリの Variables（13 件）も削除した。費用は発生していない。
 
-**リソースは稼働中で、アイドル時でも月約 60 USD かかる**（NAT Gateway が約 45 USD）。しばらく再開しない場合は、README の「撤去」の手順で削除する。
+### 再開するときの手順
+
+README の「構築」の手順を最初からやり直す。撤去前と比べて、次の点が変わる。
+
+- エンドポイントのホスト名、CloudFront のディストリビューション、Network Connector などは、すべて新しい値になる
+- `infra/terraform/terraform.tfvars` には撤去前のエンドポイントのホスト名が残っているので、1 回目の apply の前に消すか、`web_function_endpoint_domain = ""` にする（残したままだと、存在しないオリジンで CloudFront が作られる）
+- GitHub の Variables は、README の手順 2 で登録し直す
+
+### 撤去前の構成の記録
 
 | 項目 | 値 |
 | --- | --- |
-| アプリの URL | `https://wf.dev.id.basicinc.jp` |
+| アプリの URL | `https://wf.dev.id.basicinc.jp`（DNS レコードも削除済み） |
 | Web Function | `wf-proto-todo`（エンドポイント `prod`、`HomeRegion` / `IamAuth` / `LatestRevision`） |
-| エンドポイントのホスト名 | `w7r840p0ss22m5j3.6jm.lambda-web.ap-northeast-1.on.aws` |
-| CloudFront | `E3SHIJEMG0RVDV`（`d191m3kzrevbcz.cloudfront.net`） |
-| NAT Gateway の送信元 IP | `13.230.211.57` |
-| Network Connector | `nc-7b775a16-8508-4100-89b3-cf09862a5f47`（バージョン 1） |
+| AWS アカウント / リージョン | 881893826735 / `ap-northeast-1` |
 
 ### 手元にだけあるもの（コミットしていない）
 
-| ファイル | 内容 | なくした場合 |
-| --- | --- | --- |
-| `infra/terraform/terraform.tfstate` | Terraform の state。Valkey のパスワードが平文で入っている | `terraform destroy` で消せなくなる。AWS コンソールなどで手作業で消すことになる |
-| `infra/terraform/terraform.tfvars` | `web_function_endpoint_domain`（上のホスト名） | 上の表の値で作り直せる |
-| `loadtest/results/*` | k6 の結果の JSON と、コールドスタートの CSV | 要約は `docs/results/2026-10-16.md` にある |
-
-### データ
-
-アプリの TODO リストに、計測で作ったデータが残っている。
-
-- `loadtest seed 1`〜`30`（k6 の準備処理で追加したもの）
-- `動作確認（CloudFront 経由）`
-
-画面の「完了済みを一括削除」などで消せる。
+| ファイル | 内容 |
+| --- | --- |
+| `infra/terraform/terraform.tfstate` | 撤去後の state（リソースは空）。消してもよい |
+| `infra/terraform/terraform.tfvars` | 撤去前のエンドポイントのホスト名。再開前に消すか空にする |
+| `loadtest/results/*` | k6 の結果の JSON と、コールドスタートの CSV。要約は `docs/results/2026-10-16.md` にある |
 
 ## 2. Valkey の認証方式（未決定）
 
