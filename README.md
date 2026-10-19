@@ -12,6 +12,8 @@ Lambda Web Functions を本番に近い構成で検証するための TODO ア�
 
 検証を再開するときは、まず [docs/notes.md](docs/notes.md)（現在の状態、未決定事項、作業中に踏んだ落とし穴）を読んでください。 デプロイ中に新旧の revision が混ざるかの調査は [docs/deploy-mixing.md](docs/deploy-mixing.md) を参照してください。
 
+検証で分かったことの総括は [docs/lessons-learned.md](docs/lessons-learned.md) にまとめています。
+
 ## 必要なもの
 
 | ツール | バージョン | 用途 |
