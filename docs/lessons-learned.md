@@ -37,7 +37,7 @@
 
 - 起動するプロセスは、ふつうの HTTP サーバー。Lambda が `AWS_LAMBDA_HTTP_ENDPOINT`（`host:port`）を渡すので、それを standalone の `server.js` が読む `HOSTNAME` と `PORT` に変換する 4 行（`lambda/index.js`）だけで Next.js が動いた
 - メモリは 2 GB で固定。1 つの実行環境が複数のリクエストを同時に処理する（既定は最大 64）。このため、Valkey のクライアントは実行環境ごとに 1 つだけ作って使い回す設計にした
-- ログは CloudFront と同様に、リージョン内の `<name>.local` に書かれてから、ホームリージョンの `<name>` に集約される。Terraform で両方のロググループを先に作っておく。Logs Insights で結果が空のときは `.local` を見る
+- ログは、リージョン内の `<name>.local` に書かれてから、ホームリージョンの `<name>` に集約される。Terraform で両方のロググループを先に作っておく。Logs Insights で結果が空のときは `.local` を見る
 - **ランタイムが `console.log` の出力を `{"timestamp","level","message":"<元の文字列>"}` に包む。** アプリが出す JSON は文字列になり、項目で検索できない。`process.stdout.write` で書くと JSON のまま出る
 
 ### 2.3 スケーリング
