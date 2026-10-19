@@ -4,7 +4,7 @@
 # GitHub Actions（deploy.yml）から実行する前提だが、同じ環境変数を設定すれば手元からも実行できる。
 #
 # 必須の環境変数:
-#   AWS_REGION, ARTIFACT_BUCKET, WEB_FUNCTION_NAME, WEB_FUNCTION_ROLE_ARN,
+#   AWS_REGION, ARTIFACT_BUCKET, ASSETS_BUCKET, WEB_FUNCTION_NAME, WEB_FUNCTION_ROLE_ARN,
 #   NETWORK_CONNECTOR_ARN, VALKEY_HOST, VALKEY_PORT, VALKEY_USERNAME, VALKEY_SECRET_ARN
 # 任意の環境変数:
 #   DISTRIBUTION_ARN  設定されていれば、CloudFront からの呼び出しを許可するリソースポリシーを付ける
@@ -14,7 +14,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-: "${AWS_REGION:?}" "${ARTIFACT_BUCKET:?}" "${WEB_FUNCTION_NAME:?}" "${WEB_FUNCTION_ROLE_ARN:?}"
+: "${AWS_REGION:?}" "${ARTIFACT_BUCKET:?}" "${ASSETS_BUCKET:?}" "${WEB_FUNCTION_NAME:?}" "${WEB_FUNCTION_ROLE_ARN:?}"
 : "${NETWORK_CONNECTOR_ARN:?}" "${VALKEY_HOST:?}" "${VALKEY_PORT:?}" "${VALKEY_USERNAME:?}"
 : "${VALKEY_SECRET_ARN:?}"
 
@@ -29,6 +29,16 @@ summary() {
 }
 
 [[ -f "$ARTIFACT" ]] || { echo "$ARTIFACT がありません。先に pnpm package を実行してください" >&2; exit 1; }
+
+# 0. 静的ファイルを S3 に置く（CloudFront の /_next/static/* は S3 から配信する）。
+#    revision を作る前に済ませる。新しい HTML が先に届いても、チャンクが 404 にならないようにするため。
+#    --delete は付けない。旧ビルドのファイルを残し、デプロイ中に新旧の revision が混ざっても、
+#    旧 HTML が参照するチャンクを配信できるようにする
+STATIC_DIR=.next/static
+[[ -d "$STATIC_DIR" ]] || { echo "$STATIC_DIR がありません。先に pnpm package を実行してください" >&2; exit 1; }
+aws s3 sync "$STATIC_DIR" "s3://${ASSETS_BUCKET}/_next/static" \
+  --cache-control "public,max-age=31536000,immutable" --only-show-errors
+echo "synced static files to s3://${ASSETS_BUCKET}/_next/static"
 
 # 1. デプロイパッケージをアップロードする（revision はオブジェクトのバージョンを参照する）
 KEY="${WEB_FUNCTION_NAME}/${COMMIT_SHA}.zip"

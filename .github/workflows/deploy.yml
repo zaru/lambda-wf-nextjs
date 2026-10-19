@@ -20,6 +20,7 @@ jobs:
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       ARTIFACT_BUCKET: ${{ vars.ARTIFACT_BUCKET }}
+      ASSETS_BUCKET: ${{ vars.ASSETS_BUCKET }}
       WEB_FUNCTION_NAME: ${{ vars.WEB_FUNCTION_NAME }}
       WEB_FUNCTION_ROLE_ARN: ${{ vars.WEB_FUNCTION_ROLE_ARN }}
       NETWORK_CONNECTOR_ARN: ${{ vars.NETWORK_CONNECTOR_ARN }}

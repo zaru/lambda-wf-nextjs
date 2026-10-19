@@ -7,6 +7,7 @@ output "github_variables" {
       AWS_REGION            = var.region
       AWS_DEPLOY_ROLE_ARN   = aws_iam_role.github_deploy.arn
       ARTIFACT_BUCKET       = aws_s3_bucket.artifacts.bucket
+      ASSETS_BUCKET         = aws_s3_bucket.assets.bucket
       WEB_FUNCTION_NAME     = var.web_function_name
       WEB_FUNCTION_ROLE_ARN = aws_iam_role.web_function.arn
       NETWORK_CONNECTOR_ARN = aws_lambdacore_network_connector.web.arn

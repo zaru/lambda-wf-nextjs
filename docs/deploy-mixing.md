@@ -35,7 +35,7 @@
 ## 5. 対策の候補
 
 1. セッションやキャッシュの形式は、後方互換を保つ（読めるようにしてから、書く形式を変える）
-2. 旧ビルドの `_next/static` を、一定期間 CloudFront 側（S3 など）に残す
+2. 旧ビルドの `_next/static` を、一定期間 CloudFront 側（S3 など）に残す（**実装済み**: 静的ファイルは S3 に `--delete` なしで同期している。未検証）
 3. `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` を固定し、ビルド間で Server Actions の暗号化キーを揃える
 4. ログにビルド ID を入れ、revision ごとの挙動を切り分けられるようにする
 

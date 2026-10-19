@@ -112,7 +112,7 @@ CloudFront のオリジンには、Web Function のエンドポイントのホ�
 - **`Host` ヘッダは転送しない。** エンドポイントは `Host` でルーティングするため、ディストリビューションのドメイン名を送ると 404 になる。`AllViewerExceptHostHeader` を使う
 - POST（Server Actions）は `UNSIGNED-PAYLOAD` で署名される。クライアントでハッシュを計算する必要はなかった
 - OAC を付けたビヘイビアでは Lambda@Edge のオリジンリクエスト / レスポンスのトリガーが使えない
-- 静的ファイルは `/_next/static/*` だけを `CachingOptimized` にし、残りは `CachingDisabled`。静的ファイルの med は 6ms で、動的なリクエストの比較の基準になった
+- 静的ファイルは `/_next/static/*` だけを `CachingOptimized` にし、残りは `CachingDisabled`。静的ファイルの med は 6ms で、動的なリクエストの比較の基準になった（この計測時は Web Function がオリジン。その後、S3 オリジンに変更した。変更後は未計測・未デプロイ）
 - 公開してから数時間で、脆弱性を探すボットのアクセスが来た（すべて 404）。証明書の発行記録からドメインが見つかったと考えられる。WAF をスコープ外にしたが、公開するなら考える必要がある
 
 ## 6. Next.js で分かったこと

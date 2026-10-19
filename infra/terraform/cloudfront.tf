@@ -4,6 +4,7 @@
 locals {
   enable_cloudfront = var.web_function_endpoint_domain != ""
   origin_id         = "web-function"
+  assets_origin_id  = "assets"
 }
 
 data "aws_cloudfront_cache_policy" "caching_optimized" {
@@ -31,6 +32,17 @@ resource "aws_cloudfront_origin_access_control" "web_function" {
   signing_protocol = "sigv4"
 }
 
+# 静的ファイル用の S3 オリジン。Lambda 用とは署名の設定が違うので、OAC を分ける
+resource "aws_cloudfront_origin_access_control" "assets" {
+  count = local.enable_cloudfront ? 1 : 0
+
+  name                              = "${var.project}-assets"
+  description                       = "S3 assets origin"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
 resource "aws_cloudfront_distribution" "app" {
   count = local.enable_cloudfront ? 1 : 0
 
@@ -56,6 +68,12 @@ resource "aws_cloudfront_distribution" "app" {
     }
   }
 
+  origin {
+    origin_id                = local.assets_origin_id
+    domain_name              = aws_s3_bucket.assets.bucket_regional_domain_name
+    origin_access_control_id = aws_cloudfront_origin_access_control.assets[0].id
+  }
+
   # 動的なページと Server Actions はキャッシュしない
   default_cache_behavior {
     target_origin_id         = local.origin_id
@@ -67,10 +85,11 @@ resource "aws_cloudfront_distribution" "app" {
     compress                 = true
   }
 
-  # Next.js のビルド成果物（ファイル名にハッシュが入る）はエッジでキャッシュする
+  # Next.js のビルド成果物（ファイル名にハッシュが入る）は S3 から配信し、エッジでキャッシュする。
+  # Web Function を経由しないので、静的ファイルのためにアプリの実行環境は起動しない
   ordered_cache_behavior {
     path_pattern           = "/_next/static/*"
-    target_origin_id       = local.origin_id
+    target_origin_id       = local.assets_origin_id
     viewer_protocol_policy = "redirect-to-https"
     allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]

@@ -390,8 +390,9 @@ infra/terraform/
 | iam_web_function.tf | 実行ロール | CloudWatch Logs への書き込みと、`secretsmanager:GetSecretValue`（対象のシークレットだけ） |
 | logs.tf | `aws_cloudwatch_log_group` | `/aws/lambda/web/wf-proto-todo`、保持 30 日 |
 | s3_artifacts.tf | S3 バケット | バージョニング、パブリックアクセスブロック、SSE-S3、古いバージョンを 30 日で削除 |
+| s3_assets.tf | S3 バケット | 静的ファイル（`/_next/static/*`）の置き場所。バージョニングなし、パブリックアクセスブロック、SSE-S3。CloudFront の OAC からの読み取りだけを許可する。旧ビルドのファイルは消さずに残す |
 | dns_cert.tf | `aws_acm_certificate`（us-east-1）、検証用の `aws_route53_record`、`aws_acm_certificate_validation` | `wf.dev.id.basicinc.jp`。ゾーンは `data "aws_route53_zone"` で `id.basicinc.jp` を参照する |
-| cloudfront.tf | `aws_cloudfront_origin_access_control` | `origin_type = "lambda"`、`signing_behavior = "always-amz-auth"`、`signing_protocol = "sigv4"` |
+| cloudfront.tf | `aws_cloudfront_origin_access_control` | Lambda 用: `origin_type = "lambda"`、`signing_behavior = "always-amz-auth"`、`signing_protocol = "sigv4"`。静的ファイル用（S3）: `origin_type = "s3"`、`signing_behavior = "always"` |
 | | `aws_cloudfront_distribution` | 7.5 節のとおり |
 | | `aws_route53_record`（A / AAAA エイリアス） | `wf.dev.id.basicinc.jp` → ディストリビューション |
 | github_oidc.tf | デプロイ用ロール | OIDC プロバイダは `data "aws_iam_openid_connect_provider"` で既存を参照する（既存プロジェクトの Terraform が管理しているので変更しない）。信頼条件は `aud = sts.amazonaws.com` かつ `sub = repo:zaru@235650/lambda-wf-nextjs@1421610968:ref:refs/heads/main`（リポジトリが不変の ID を含む sub の形式を使っているため。変数 `github_oidc_sub_prefix`） |
@@ -405,12 +406,12 @@ infra/terraform/
 | HTTP バージョン | HTTP/2 と HTTP/3 |
 | IPv6 | 有効 |
 | 価格クラス | `PriceClass_200`（日本を含む） |
-| オリジン | Web Function のエンドポイントのホスト名、HTTPS のみ、OAC を付ける |
+| オリジン | ① Web Function のエンドポイントのホスト名（HTTPS のみ、OAC を付ける）、② 静的ファイル用の S3 バケット（OAC を付ける） |
 
 | ビヘイビア | キャッシュポリシー | オリジンリクエストポリシー | 許可メソッド |
 | --- | --- | --- | --- |
-| `/_next/static/*` | `CachingOptimized` | なし | GET, HEAD |
-| `*`（既定） | `CachingDisabled` | `AllViewerExceptHostHeader` | すべて |
+| `/_next/static/*`（S3 オリジン） | `CachingOptimized` | なし | GET, HEAD |
+| `*`（既定。Web Function オリジン） | `CachingDisabled` | `AllViewerExceptHostHeader` | すべて |
 
 - `Host` ヘッダは転送しない。Web Function のエンドポイントは `Host` でルーティングするため、ディストリビューションのドメイン名を送ると 404 になる
 - POST（Server Actions）は、CloudFront が署名なしペイロード（`UNSIGNED-PAYLOAD`）で署名する。クライアント側でハッシュを計算する必要はない
@@ -438,6 +439,7 @@ infra/terraform/
 | `AWS_REGION` | `ap-northeast-1` |
 | `AWS_DEPLOY_ROLE_ARN` | OIDC で AssumeRole するロール |
 | `ARTIFACT_BUCKET` | zip のアップロード先 |
+| `ASSETS_BUCKET` | 静的ファイル（`.next/static`）の同期先。revision の作成より前に `aws s3 sync`（`--delete` なし）する |
 | `WEB_FUNCTION_NAME` | `wf-proto-todo` |
 | `WEB_FUNCTION_ROLE_ARN` | revision の `executionRoleArn` |
 | `NETWORK_CONNECTOR_ARN` | Connector の ARN（バージョンなし）。バージョン付き ARN はデプロイ時に解決する |
@@ -528,7 +530,7 @@ Web Function の個々の操作の IAM アクション名を網羅した資料�
 | `GET /` | SSR ＋ Valkey の読み込み |
 | Server Action（追加・切り替え） | POST ＋ Valkey の書き込み |
 | `GET /api/health` | Valkey の `PING` だけ |
-| `GET /_next/static/*` | CloudFront のキャッシュヒット（比較の基準） |
+| `GET /_next/static/*` | CloudFront のキャッシュヒット（比較の基準）。2026-10-16 の計測時は Web Function がオリジン。S3 オリジンへの変更後は未計測 |
 | `GET /api/diag/external` | NAT 経由の外部通信（**低頻度に限定する**。4.6 節） |
 
 ### 9.4 負荷試験

@@ -53,6 +53,19 @@ data "aws_iam_policy_document" "github_deploy" {
   }
 
   statement {
+    sid       = "UploadAssets"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.assets.arn}/_next/static/*"]
+  }
+
+  # aws s3 sync が、既存のオブジェクトとの差分を調べるのに使う
+  statement {
+    sid       = "ListAssets"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.assets.arn]
+  }
+
+  statement {
     sid = "ManageWebFunction"
     # 作成・取得、revision、エンドポイント、リソースポリシーの操作。対象はこの関数だけに絞る
     actions = [
